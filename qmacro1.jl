@@ -48,7 +48,7 @@ function bisection(f,left,right,ϵ,quietly=false)
 end
 
 #writing labor as a function of capital, from labor FOC
-l(k) = ((1-θ)*A/2)^(1/(θ+1))*k^(θ/θ+1)
+l(k) = ((1-θ)*A/2)^(1/(θ+1))*k^(θ/(θ+1))
 
 #Euler set equal to zero, we'll apply bisection to this
 #I did RHS to make it more readable?
@@ -89,7 +89,7 @@ using ForwardDiff
 #newton solver
 
 #ϵ is the error tolerance
-function newton(f,initial,ϵ,quietly)
+function newton(f,initial,ϵ,quietly=false)
     x = initial
     iter = 1
     while abs(f(x))>= ϵ
@@ -112,7 +112,7 @@ end
 using Plots
 
 #generating guesses for capital, labor, linear from initial to steady state
-T = 200 #last time period
+T = 50 #last time period
 ITER = 50 #number of iterations
 #guesses for labor and captial
 kguesses = [i for i in k0:(kss-k0)/T:kss]
@@ -144,8 +144,13 @@ for iter in 1:ITER
         k10 = kvec
     end
 end
+#plots the initial guess line and after 50 iterations
+#for capital and labor
+
+#capital
 plot(0:T,kguesses)
 plot!(0:T,kvec)
 
+#labor
 plot(0:T,lguesses)
 plot!(0:T,lvec)
