@@ -22,11 +22,20 @@ kss = lss*klratio
 #f is function
 #left and right are domain endpoints
 #ϵ is an error tolerance
-function bisection(f,left,right,ϵ)
+#setting quietly to true mutes output
+function bisection(f,left,right,ϵ,quietly=false)
+    if f(left)*f(right) > 0
+        println("Invalid domain endpoints")
+        return NaN
+    end
+
     middle = (left+right)/2
     iter = 1
     while abs(f(middle)) >= ϵ
-        println("i=$iter val=$middle")
+        if !quietly
+            println("i=$iter val=$middle")
+        end
+
         if sign(f(middle))== sign(f(left))
             left = middle
         else
@@ -73,3 +82,70 @@ f(k1) = Euler(c(l0,k0,k1), #this is consumption in time zero, function of k1
 @show ϵ
 @time k1 = bisection(f,k0,k2,ϵ)
 @show k1
+
+# 1.c)
+
+using ForwardDiff
+#newton solver
+
+#ϵ is the error tolerance
+function newton(f,initial,ϵ,quietly)
+    x = initial
+    iter = 1
+    while abs(f(x))>= ϵ
+        #println("i=$iter val=$x")
+        dfdx = ForwardDiff.derivative(f,x)
+        if !quietly
+            println("dfdx $dfdx")
+        end
+        x = x - f(x)/dfdx
+        iter += 1
+    end
+    return x
+end
+
+#this is a weird answer, I'm not sure what to do about this
+@time k1_newton = newton(f,k0,ϵ)
+@show k1_newton
+
+# 1.d)
+using Plots
+
+#generating guesses for capital, labor, linear from initial to steady state
+T = 200 #last time period
+ITER = 50 #number of iterations
+#guesses for labor and captial
+kguesses = [i for i in k0:(kss-k0)/T:kss]
+lguesses = [i for i in l0:(lss-l0)/T:lss]
+
+#time series for capital and labor that we're updating
+kvec = [i for i in k0:(0.25*kss)/T:kss]
+lvec = [i for i in l0:(lss-l0)/T:lss]
+
+#time periods we want to revise
+for iter in 1:ITER
+    println("iter $iter")
+    for t in 2:T
+        #FOC for this time period
+        f(k) = Euler(c(lvec[t-1],kvec[t-1],k), #consumption of previous period
+            lvec[t-1], #labor in previous period
+            c(l(k),k,kvec[t+1]), #c_t as a function of k_t
+            l(k), #labor in time t as a function of k_t
+            kvec[t+1]) #capital in time t+1, a parameter
+        kvec[t] = newton(f,kvec[t],ϵ,true)
+
+        if kvec[t] == NaN
+            println("leaving")
+            break
+        end
+        lvec[t] = l(kvec[t])
+    end
+    if iter == 10
+        k10 = kvec
+    end
+end
+plot(0:T,kguesses)
+plot!(0:T,kvec)
+
+plot(0:T,lguesses)
+plot!(0:T,lvec)
