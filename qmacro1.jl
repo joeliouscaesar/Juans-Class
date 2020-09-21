@@ -96,7 +96,7 @@ function newton(f,initial,ϵ,quietly=false)
         #println("i=$iter val=$x")
         dfdx = ForwardDiff.derivative(f,x)
         if !quietly
-            println("dfdx $dfdx")
+            println("i=$iter val=$x")
         end
         x = x - f(x)/dfdx
         iter += 1
@@ -105,52 +105,96 @@ function newton(f,initial,ϵ,quietly=false)
 end
 
 #this is a weird answer, I'm not sure what to do about this
-@time k1_newton = newton(f,k0,ϵ)
+@show k0
+@show k2
+@show mid = (k0+k2)/2
+@time k1_newton = newton(f,(k0+k2)/2,ϵ)
 @show k1_newton
+
 
 # 1.d)
 using Plots
 
-#generating guesses for capital, labor, linear from initial to steady state
-T = 50 #last time period
-ITER = 50 #number of iterations
-#guesses for labor and captial
-kguesses = [i for i in k0:(kss-k0)/T:kss]
-lguesses = [i for i in l0:(lss-l0)/T:lss]
+#function which calculates the captial accumulation path using Newton's method
+#T is the last time period
+#ITER is the number of iterations
+#kss is the steady state capital, k0 is the initial value
+#lss is the steady state labor, l0 is the initial value
+function capital_path(T,ITER,kss,k0,lss,l0,quietly=false)
 
-#time series for capital and labor that we're updating
-kvec = [i for i in k0:(0.25*kss)/T:kss]
-lvec = [i for i in l0:(lss-l0)/T:lss]
+    #guesses for labor and capital, straight line to steady state
+    kguesses = [i for i in k0:(kss-k0)/T:kss]
+    lguesses = [i for i in l0:(lss-l0)/T:lss]
 
-#time periods we want to revise
-for iter in 1:ITER
-    println("iter $iter")
-    for t in 2:T
-        #FOC for this time period
-        f(k) = Euler(c(lvec[t-1],kvec[t-1],k), #consumption of previous period
-            lvec[t-1], #labor in previous period
-            c(l(k),k,kvec[t+1]), #c_t as a function of k_t
-            l(k), #labor in time t as a function of k_t
-            kvec[t+1]) #capital in time t+1, a parameter
-        kvec[t] = newton(f,kvec[t],ϵ,true)
+    #time series for capital and labor that we're updating
+    kvec = copy(kguesses)
+    lvec = copy(lguesses)
 
-        if kvec[t] == NaN
-            println("leaving")
-            break
+    for iter in 1:ITER
+        if !quietly
+            println("iter $iter")
         end
-        lvec[t] = l(kvec[t])
+        for t in 2:T
+            #gets the FOC for this period
+            f(k) = Euler(c(lvec[t-1],kvec[t-1],k), #consumption of previous period
+                lvec[t-1], #labor in previous period
+                c(l(k),k,kvec[t+1]), #c_t as a function of k_t
+                l(k), #labor in time t as a function of k_t
+                kvec[t+1]) #capital in time t+1, a parameter
+            #updating capital and labor
+            kvec[t] = newton(f,kvec[t],ϵ,true)
+            lvec[t] = l(kvec[t])
+        end
     end
-    if iter == 10
-        k10 = kvec
-    end
+    return kvec
 end
+
 #plots the initial guess line and after 50 iterations
 #for capital and labor
+T = 50
+
+#capital paths for different numbers of iterations
+#j0 is zero iterations, j10 is 10
+kvec_j0 = capital_path(T,0,kss,k0,lss,l0)
+kvec_j1 = capital_path(T,1,kss,k0,lss,l0)
+kvec_j2 = capital_path(T,2,kss,k0,lss,l0)
+kvec_j5 = capital_path(T,5,kss,k0,lss,l0)
+kvec_j10 = capital_path(T,10,kss,k0,lss,l0)
+kvec_j50 = capital_path(T,50,kss,k0,lss,l0)
+kvec_j5000 = capital_path(T,5000,kss,k0,lss,l0)
+#50000 looks same as 5000, takes about 2 minutes
+#@time kvec_j50000 = capital_path(T,50000,kss,k0,lss,l0,true)
 
 #capital
-plot(0:T,kguesses)
-plot!(0:T,kvec)
+plot(0:T,kvec_j0,label="j=0",legend = :outertopleft,title="Capital Path")
+plot!(0:T,kvec_j1,label="j=1")
+plot!(0:T,kvec_j2,label="j=2")
+plot!(0:T,kvec_j5,label="j=3")
+plot!(0:T,kvec_j10,label="j=4")
+plot!(0:T,kvec_j50,label="j=5")
+plot!(0:T,kvec_j5000,label="Optimal")
 
-#labor
-plot(0:T,lguesses)
-plot!(0:T,lvec)
+# 1.5)
+invest = kvec_j5000
+labor = l.(kvec_j5000)
+
+output(k,l) = A*k^θ*l^(1-θ)+k*(1-δ)
+outputpath = [output(invest[t],labor[t]) for t in 1:51]
+
+#this is only 50...
+consumption = [c(labor[t],invest[t],invest[t+1]) for t in 1:50]
+
+#adds steady state consumption to the consumption path
+push!(consumption,c(lss,kss,kss))
+
+plot(0:T,invest,label="investment",legend = :outertopleft)
+plot!(0:T,consumption,label="consumption")
+plot!(0:T,labor,label="employment")
+plot!(0:T,outputpath,label="output")
+
+#quick consistency check that next period investment plus current consumption
+#is equal to output
+invcons = [invest[t+1]+consumption[t] for t in 1:50]
+push!(invcons,c(lss,kss,kss)+kss)
+invcons-outputpath
+@show sum(invcons-outputpath)
